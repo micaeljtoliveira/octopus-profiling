@@ -1,0 +1,50 @@
+[project]
+name = "octopus-profiling"
+dynamic = ["version"]
+description = "Tools and utilities to profile the Octopus code."
+authors = [
+  {name = "Micael Oliveira", email="micael.oliveira@anu.edu.au"},
+]
+readme = "README.md"
+keywords = ["profiling", "octopus", "tddft"]
+classifiers = [
+    "License :: OSI Approved :: Mozilla Public License 2.0 (MPL 2.0)",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Topic :: Utilities",
+]
+requires-python = ">=3.11.4"
+dependencies = [
+    # Development versions of access-profiling are needed, which pip only considers when a pre-release is named
+    "access-profiling>=0.3.dev0",
+    "access-config-utils>=0.4",
+    "pint",
+    "xarray",
+]
+
+[build-system]
+requires = ["setuptools>=80", "setuptools_scm[toml]>=8"]
+build-backend = "setuptools.build_meta"
+
+[project.optional-dependencies]
+devel = [
+    "ruff",
+    "pre-commit",
+]
+test = [
+    "pytest",
+    "pytest-cov",
+]
+
+[tool.pytest.ini_options]
+addopts = ["--cov=octopus_profiling", "--cov-report=term", "--cov-report=html", "--cov-report=xml"]
+testpaths = ["tests"]
+
+[tool.coverage.run]
+omit = ["setup.py"]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "B", "C4", "SIM", "PTH", "UP", "I", "N", "C901"]
