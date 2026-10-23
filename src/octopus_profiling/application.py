@@ -181,7 +181,7 @@ class OctopusApplication(Application):
         if self.profiling_mode is not None:
             variables["ProfilingMode"] = self.profiling_mode
         if self.profile_all_ranks:
-            variables["ProfilingAllNodes"] = True
+            variables["ProfilingAllNodes"] = "yes"
         return {"inp": variables}
 
     def parse_layout(self, output_dir: Path) -> ComponentLayout | None:

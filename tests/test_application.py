@@ -97,7 +97,7 @@ def test_config_changes(app):
             "ParStates": 4,
             "ParKPoints": 1,
             "ProfilingMode": "prof_time",
-            "ProfilingAllNodes": True,
+            "ProfilingAllNodes": "yes",
         }
     }
 

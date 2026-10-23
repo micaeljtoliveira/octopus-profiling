@@ -16,6 +16,7 @@ with suppress(PackageNotFoundError):
     __version__ = version("octopus-profiling")
 
 from octopus_profiling.application import OctopusApplication, OctopusGroupSizeConstraint
+from octopus_profiling.inp import OctopusInputParser, full_name, get_variable
 from octopus_profiling.manager import OctopusManager
 from octopus_profiling.profiling_parser import (
     OctopusProfilingParser,
@@ -26,8 +27,11 @@ from octopus_profiling.profiling_parser import (
 __all__ = [
     "OctopusApplication",
     "OctopusGroupSizeConstraint",
+    "OctopusInputParser",
     "OctopusManager",
     "OctopusProfilingParser",
     "OctopusRankProfilingParser",
     "OctopusTreeProfilingParser",
+    "full_name",
+    "get_variable",
 ]

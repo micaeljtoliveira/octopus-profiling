@@ -17,7 +17,7 @@ from access.profiling.metrics import tavg
 from conftest import PARALLEL_STDOUT, SERIAL_STDOUT, write_experiment
 
 from octopus_profiling.application import OctopusApplication
-from octopus_profiling.inp import read_variables
+from octopus_profiling.inp import OctopusInputParser
 from octopus_profiling.manager import OctopusManager
 from octopus_profiling.metrics import ttot
 
@@ -170,10 +170,10 @@ class TestCreateExperiments:
         # Outputs of the control are not copied, but everything else is
         assert {path.name for path in exp.path.iterdir()} == {"inp", "restart", "run.sh"}
 
-        variables = read_variables((exp.path / "inp").read_text())
-        assert variables["pardomains"] == "1"
-        assert variables["parstates"] == "2"
-        assert variables["parkpoints"] == "1"
+        variables = OctopusInputParser().parse((exp.path / "inp").read_text())
+        assert variables["pardomains"] == 1
+        assert variables["parstates"] == 2
+        assert variables["parkpoints"] == 1
         assert variables["profilingmode"] == "prof_time"
         assert variables["profilingallnodes"] == "yes"
 
@@ -203,14 +203,15 @@ class TestCreateExperiments:
     def test_regenerate_failed(self, manager):
         generate(manager)
         exp = manager.experiments["octopus-layout_ch4_dom2_st1_kp1_omp1"]
-        (exp.path / "inp").write_text("ParDomains = 7\n")
+        # The value the control had is of another type than the one written over it
+        (exp.path / "inp").write_text("ParDomains = auto\nRadius = 4\n")
         (exp.path / "exit_code").write_text("1\n")
         manager.update_statuses()
         assert exp.status == ProfilingExperimentStatus.FAILED
 
         generate(manager, regenerate_failed=True)
 
-        assert read_variables((exp.path / "inp").read_text())["pardomains"] == "2"
+        assert (exp.path / "inp").read_text().startswith("Radius = 4\nParDomains = 2\n")
         assert manager.experiments["octopus-layout_ch4_dom2_st1_kp1_omp1"] is exp
 
     def test_only_inp_can_change(self, manager):
