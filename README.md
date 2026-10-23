@@ -40,9 +40,9 @@ from access.profiling import RegionGroup
 from access.profiling.metrics import tavg
 from octopus_profiling import OctopusApplication, OctopusManager
 
-# The sizes of the system bound the parallelization: the number of mesh points is printed by Octopus next to the
-# size of the ParDomains group, and the number of states in the "States" section of its output.
-app = OctopusApplication(name="ch4", n_points=612525, n_states=8)
+# The numbers of states and k-points bound the parallelization in states and k-points. Octopus writes them to
+# restart/gs/states (nst and nik). The number of domains is not bounded, as Octopus partitions the mesh itself.
+app = OctopusApplication(name="ch4", n_states=8)
 manager = OctopusManager(Path("experiments"), Path("archive"), app)
 
 manager.add_experiment_from_directory("1core", Path("1core"))
@@ -68,7 +68,7 @@ data of each experiment is keyed by log name:
 from access.config.parallel_allocation_strategies import RootAllocation
 from access.profiling.control import ExistingDirectoryControlSource
 
-app = OctopusApplication(name="ch4", n_points=612525, n_states=8, min_points_per_domain=10000)
+app = OctopusApplication(name="ch4", n_states=8)
 manager = OctopusManager(
     Path("experiments"),
     Path("archive"),

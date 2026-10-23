@@ -12,15 +12,15 @@ from access.config.parallel_layouts import iter_layouts
 from access.config.parallel_mpi_grid import MPICartesianGrid
 from conftest import PARALLEL_STDOUT, SERIAL_STDOUT, write_experiment
 
-from octopus_profiling.application import OctopusApplication, OctopusGroupSizeConstraint
+from octopus_profiling.application import UNLIMITED_DOMAINS, OctopusApplication, OctopusGroupSizeConstraint
 
 
 @pytest.fixture
 def app():
-    return OctopusApplication(name="ch4", n_points=1000, n_states=8, n_kpoints=2, min_points_per_domain=300)
+    return OctopusApplication(name="ch4", n_states=8, n_kpoints=2)
 
 
-def octopus_layout(grid, threads=1, domain=(1000, 8, 2)):
+def octopus_layout(grid, threads=1, domain=(UNLIMITED_DOMAINS, 8, 2)):
     n_ranks = grid[0] * grid[1] * grid[2]
     return ComponentLayout(
         name="octopus",
@@ -33,7 +33,7 @@ def octopus_layout(grid, threads=1, domain=(1000, 8, 2)):
 
 @pytest.mark.parametrize(
     "kwargs",
-    [{}, {"name": "x", "n_points": 0, "n_states": 1}, {"name": "x", "n_points": 1, "n_states": 1, "n_kpoints": 0}],
+    [{}, {"name": "x", "n_states": 0}, {"name": "x", "n_states": 1, "n_kpoints": 0}],
 )
 def test_invalid_application(kwargs):
     """Tests that an application without a name or with a non-positive size is rejected."""
@@ -46,12 +46,13 @@ def test_layouts(app):
     layouts = list(iter_layouts(app.parallel_component, 4, allocations=RootAllocation(thread_range=(1, 2))))
 
     found = {(layout.decomposition.grid.shape, layout.threads_per_rank) for layout in layouts}
-    # 4 domains would hold fewer than 300 points each, and there are only 2 k-points
+    # The number of domains is not restricted, but there are only 2 k-points
     assert found == {
         ((1, 2, 2), 1),
         ((1, 4, 1), 1),
         ((2, 1, 2), 1),
         ((2, 2, 1), 1),
+        ((4, 1, 1), 1),
         ((1, 1, 2), 2),
         ((1, 2, 1), 2),
         ((2, 1, 1), 2),
@@ -61,8 +62,7 @@ def test_layouts(app):
 @pytest.mark.parametrize(
     ("grid", "satisfied"),
     [
-        ((3, 1, 1), True),
-        ((4, 1, 1), False),
+        ((4096, 1, 1), True),
         ((1, 8, 1), True),
         ((1, 16, 1), False),
         ((1, 1, 2), True),
@@ -71,7 +71,7 @@ def test_layouts(app):
 )
 def test_group_size_constraint(grid, satisfied):
     """Tests the limits on the number of groups of each strategy."""
-    assert OctopusGroupSizeConstraint(300).is_satisfied(octopus_layout(grid)) == satisfied
+    assert OctopusGroupSizeConstraint().is_satisfied(octopus_layout(grid)) == satisfied
 
 
 def test_group_size_constraint_needs_decomposition():
@@ -103,8 +103,8 @@ def test_config_changes(app):
 
 
 def test_config_changes_leaves_profiling_alone():
-    app = OctopusApplication(name="ch4", n_points=1000, n_states=8, profiling_mode=None, profile_all_ranks=False)
-    assert app.config_changes(octopus_layout((2, 1, 1), domain=(1000, 8, 1))) == {
+    app = OctopusApplication(name="ch4", n_states=8, profiling_mode=None, profile_all_ranks=False)
+    assert app.config_changes(octopus_layout((2, 1, 1), domain=(UNLIMITED_DOMAINS, 8, 1))) == {
         "inp": {"ParDomains": 2, "ParStates": 1, "ParKPoints": 1}
     }
 

@@ -11,9 +11,12 @@ into domains, the electronic states among groups of processes, and so on for the
 whose components run on disjoint sets of cores, these are levels of a single decomposition: the number of processes
 is the product of the number of groups of each strategy.
 
-This is expressed as a single component whose domain has one axis per strategy, (mesh points, states, k-points),
-so that each process grid found by the layout search is one way of setting ParDomains, ParStates and ParKPoints.
-OpenMP threads come from the thread range of the allocation strategy passed to the layout search.
+This is expressed as a single component whose domain has one axis per strategy, (domains, states, k-points), so
+that each process grid found by the layout search is one way of setting ParDomains, ParStates and ParKPoints. OpenMP
+threads come from the thread range of the allocation strategy passed to the layout search.
+
+The size or shape of the domains is not constrained: a domain usually holds many more mesh points than there are
+ranks available, and Octopus partitions the mesh in an optimal way.
 """
 
 import re
@@ -37,30 +40,26 @@ OCTOPUS_COMPONENT = "octopus"
 # Parallelization strategies, in the order of the axes of the domain
 PARALLEL_STRATEGIES = ("ParDomains", "ParStates", "ParKPoints")
 
+# Size of the domains axis. The number of mesh points is many times larger than the number of ranks available and
+# Octopus partitions the mesh itself, so the axis is given a size that never limits the number of domains. The layout
+# search enumerates process grids from the number of ranks alone, so a large size costs nothing.
+UNLIMITED_DOMAINS = 2**31 - 1
+
 
 @dataclass(frozen=True)
 class OctopusGroupSizeConstraint(LocalConstraint):
     """Restricts the number of groups of each Octopus parallelization strategy.
 
-    There cannot be more groups of states or k-points than there are states or k-points, and each domain should hold
-    a minimum number of mesh points for the parallelization in domains to be worth its communication cost.
-
-    Args:
-        min_points_per_domain (int): Minimum number of mesh points in each domain.
+    There cannot be more groups of states or k-points than there are states or k-points. The number of domains is
+    not restricted, as Octopus partitions the mesh itself.
     """
-
-    min_points_per_domain: int = 1
 
     def is_satisfied(self, layout: ComponentLayout) -> bool:
         if layout.decomposition is None:
             raise ValueError(f"{type(self).__name__} requires a layout with a domain decomposition.")
-        (n_points, n_states, n_kpoints) = layout.decomposition.domain.shape
-        (n_domains, n_state_groups, n_kpoint_groups) = layout.decomposition.grid.shape
-        return (
-            n_points // n_domains >= self.min_points_per_domain
-            and n_state_groups <= n_states
-            and n_kpoint_groups <= n_kpoints
-        )
+        (_, n_states, n_kpoints) = layout.decomposition.domain.shape
+        (_, n_state_groups, n_kpoint_groups) = layout.decomposition.grid.shape
+        return n_state_groups <= n_states and n_kpoint_groups <= n_kpoints
 
 
 def _rank_files_locator() -> LogLocator:
@@ -78,16 +77,13 @@ def _rank_files_locator() -> LogLocator:
 class OctopusApplication(Application):
     """One Octopus calculation, set up one particular way.
 
-    The sizes of the system are what bound the parallelization: they can be read from the output of a previous run
-    of the same input. The number of mesh points is printed next to the size of the ParDomains group, and the number
-    of states in the "States" section.
+    The number of states and of k-points bound the parallelization in states and k-points. They can be read from the
+    output of a previous run of the same input, e.g. in restart/gs/states (nst and nik).
 
     Args:
         name (str): Short name for this calculation.
-        n_points (int): Number of points of the real-space mesh.
         n_states (int): Number of electronic states.
         n_kpoints (int): Number of k-points. Defaults to 1.
-        min_points_per_domain (int): Minimum number of mesh points each domain must hold. Defaults to 1.
         experiment_prefix (str): Prefix for the names of the experiments generated for this calculation.
         stdout (str): Name of the file the standard output of Octopus is written to, relative to the experiment
             directory. Defaults to "out".
@@ -103,10 +99,8 @@ class OctopusApplication(Application):
     # name is defaulted because every field after it is, not because it is optional: __post_init__ refuses an empty
     # one.
     name: str = ""
-    n_points: int = 0
     n_states: int = 0
     n_kpoints: int = 1
-    min_points_per_domain: int = 1
     experiment_prefix: str = "octopus-layout"
     stdout: str = "out"
     profiling_mode: str | None = "prof_time"
@@ -115,21 +109,21 @@ class OctopusApplication(Application):
     def __post_init__(self) -> None:
         if not self.name:
             raise ValueError("OctopusApplication.name must be non-empty.")
-        for field in ("n_points", "n_states", "n_kpoints", "min_points_per_domain"):
+        for field in ("n_states", "n_kpoints"):
             if getattr(self, field) <= 0:
                 raise ValueError(f"OctopusApplication.{field} must be positive, got {getattr(self, field)}.")
 
     @property
     def domain(self) -> Domain:
-        """Domain with one axis per parallelization strategy: (mesh points, states, k-points)."""
-        return Domain((self.n_points, self.n_states, self.n_kpoints))
+        """Domain with one axis per parallelization strategy: (domains, states, k-points)."""
+        return Domain((UNLIMITED_DOMAINS, self.n_states, self.n_kpoints))
 
     @property
     def parallel_component(self) -> ParallelComponent:
         return ParallelComponent(
             OCTOPUS_COMPONENT,
             domain=self.domain,
-            local_constraints=(OctopusGroupSizeConstraint(self.min_points_per_domain),),
+            local_constraints=(OctopusGroupSizeConstraint(),),
         )
 
     @property

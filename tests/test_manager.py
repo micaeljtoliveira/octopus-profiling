@@ -24,7 +24,7 @@ from octopus_profiling.metrics import ttot
 
 @pytest.fixture
 def app():
-    return OctopusApplication(name="ch4", n_points=1000, n_states=8)
+    return OctopusApplication(name="ch4", n_states=8)
 
 
 @pytest.fixture
