@@ -91,7 +91,9 @@ manager.plot_scaling_data(
 )
 ```
 
-Each experiment is a copy of the control directory, without the outputs of any previous run of it, with
+The control must be an existing directory holding the calculation (its `inp` and anything else it needs, such as
+a `restart` directory), given as an absolute path; it is never fetched from anywhere. Each experiment is a copy of
+the control directory, without the outputs of any previous run of it, with
 `ParDomains`, `ParStates`, `ParKPoints`, `ProfilingMode` and `ProfilingAllNodes` set in its `inp` file. It also
 holds a `run.sh` script running Octopus with the right number of processes and threads, which can be run by hand
 as well. Experiments are run one after the other, and `run_experiments` blocks until all of them are done.

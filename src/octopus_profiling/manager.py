@@ -12,7 +12,6 @@ OpenMP threads. Experiments are run one after the other, so that they do not com
 """
 
 import logging
-import os
 import re
 import shlex
 import shutil
@@ -20,7 +19,7 @@ import subprocess
 from collections.abc import Sequence
 from pathlib import Path
 
-from access.profiling.control import ControlSource, ExistingDirectoryControlSource, GitControlSource
+from access.profiling.control import ExistingDirectoryControlSource
 from access.profiling.experiment import (
     ExperimentPlan,
     ProfilingExperiment,
@@ -57,14 +56,17 @@ class OctopusManager(ProfilingManager[OctopusApplication]):
         work_dir (Path): Working directory where profiling experiments will be generated and run.
         archive_dir (Path): Directory where completed experiments will be archived.
         application (OctopusApplication): The calculation being profiled.
-        control (ControlSource | None): Where the control calculation comes from: a directory holding the input file
-            and anything else the calculation needs, e.g. a restart directory. A git repository is cloned into the
-            working directory, without prompting for credentials. None (the default) is enough to read and plot
-            experiments that already exist.
+        control (ExistingDirectoryControlSource | None): The control calculation: an existing directory holding the
+            input file and anything else the calculation needs, e.g. a restart directory. It is copied, never fetched.
+            None (the default) is enough to read and plot experiments that already exist.
         mpirun (str): Command used to launch Octopus with MPI. Defaults to "mpirun".
         mpirun_args (Sequence[str]): Further arguments to pass to mpirun, e.g. ["--bind-to", "core"].
         octopus (str): The Octopus executable. Defaults to "octopus".
         preamble (str): Shell commands to run before Octopus in each experiment, e.g. to load modules.
+
+    Raises:
+        TypeError: If the control is not an ExistingDirectoryControlSource.
+        ValueError: If the control directory does not exist.
     """
 
     def __init__(
@@ -72,18 +74,56 @@ class OctopusManager(ProfilingManager[OctopusApplication]):
         work_dir: Path,
         archive_dir: Path,
         application: OctopusApplication,
-        control: ControlSource | None = None,
+        control: ExistingDirectoryControlSource | None = None,
         *,
         mpirun: str = "mpirun",
         mpirun_args: Sequence[str] = (),
         octopus: str = "octopus",
         preamble: str = "",
     ):
+        # The base class sets the control without going through the setter below, so it is checked here
+        self._check_control(control)
         super().__init__(work_dir, archive_dir, application, control)
         self.mpirun = mpirun
         self.mpirun_args = tuple(mpirun_args)
         self.octopus = octopus
         self.preamble = preamble
+
+    @staticmethod
+    def _check_control(control: ExistingDirectoryControlSource | None) -> None:
+        """Raises unless the control is None or an existing directory."""
+        if control is None:
+            return
+        if not isinstance(control, ExistingDirectoryControlSource):
+            raise TypeError(
+                "The control of an Octopus study must be an ExistingDirectoryControlSource, got "
+                f"{type(control).__name__}."
+            )
+        if not control.path.is_dir():
+            raise ValueError(f"Control directory '{control.path}' does not exist.")
+
+    @property
+    def control(self) -> ExistingDirectoryControlSource | None:
+        """Returns the control calculation every experiment is a copy of.
+
+        Returns:
+            ExistingDirectoryControlSource | None: The control, or None if this manager was given none.
+        """
+        return self._control  # type: ignore[return-value]
+
+    @control.setter
+    def control(self, value: ExistingDirectoryControlSource | None) -> None:
+        """Sets the control calculation.
+
+        Args:
+            value (ExistingDirectoryControlSource | None): The control.
+
+        Raises:
+            TypeError: If the control is not an ExistingDirectoryControlSource.
+            ValueError: If the control directory does not exist.
+        """
+        self._check_control(value)
+        self._control = value
 
     def profiling_logs(self, path: Path, run_path: Path | None = None) -> dict[str, dict[int, ProfilingLog]]:
         """Returns all profiling logs of an experiment.
@@ -159,28 +199,16 @@ class OctopusManager(ProfilingManager[OctopusApplication]):
         return status
 
     def _control_directory(self) -> Path:
-        """Returns the directory of the control calculation, cloning it first if needed.
+        """Returns the directory of the control calculation.
 
         Raises:
-            ValueError: If the control is of an unsupported kind or the directory does not exist.
-            subprocess.CalledProcessError: If cloning the control fails.
+            ValueError: If there is no control, or if its directory no longer exists.
         """
-        control = self.control
-        if isinstance(control, ExistingDirectoryControlSource):
-            directory = control.path
-        elif isinstance(control, GitControlSource):
-            directory = self.work_dir / control.directory
-            if not directory.exists():
-                logger.info(f"Cloning control {control.origin} into {directory}.")
-                env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
-                subprocess.run(["git", "clone", control.origin, str(directory)], check=True, env=env)
-                subprocess.run(["git", "checkout", control.start_point], cwd=directory, check=True, env=env)
-        else:
-            raise ValueError(f"Unsupported control source: {control!r}.")
-
-        if not directory.is_dir():
-            raise ValueError(f"Control directory '{directory}' does not exist.")
-        return directory
+        if self.control is None:
+            raise ValueError("Cannot create experiments without a control.")
+        # Checked again, as the directory may have been removed since it was given
+        self._check_control(self.control)
+        return self.control.path
 
     def _run_script(self, plan: ExperimentPlan) -> str:
         """Returns the script running an experiment."""
@@ -213,7 +241,7 @@ class OctopusManager(ProfilingManager[OctopusApplication]):
             dict[str, ProfilingExperiment]: The new experiments, keyed by name.
 
         Raises:
-            ValueError: If the control is unsupported or missing, or if a plan changes a file other than the input
+            ValueError: If the control directory no longer exists, or if a plan changes a file other than the input
                 file.
         """
         control_dir = self._control_directory()

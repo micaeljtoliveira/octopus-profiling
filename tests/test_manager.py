@@ -4,6 +4,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+import shutil
 import subprocess
 from pathlib import Path
 from unittest import mock
@@ -222,29 +223,46 @@ class TestCreateExperiments:
             generate(manager)
         assert manager.experiments == {}
 
-    def test_missing_control(self, tmp_path, app):
-        manager = OctopusManager(
-            tmp_path / "work", tmp_path / "archive", app, ExistingDirectoryControlSource(tmp_path / "nowhere")
-        )
+    def test_control_removed_after_construction(self, manager, control):
+        shutil.rmtree(control.path)
         with pytest.raises(ValueError, match="does not exist"):
             generate(manager)
 
-    def test_git_control(self, tmp_path, app, control):
+    def test_no_control(self, tmp_path, app):
+        """Test that a manager without a control cannot create experiments, even when asked directly."""
+        manager = OctopusManager(tmp_path / "work", tmp_path / "archive", app)
+        with pytest.raises(ValueError, match="without a control"):
+            manager._create_experiments([])
+
+
+class TestControl:
+    """The control must be an existing directory, whichever way it is given."""
+
+    def test_git_control(self, tmp_path, app):
         git_control = GitControlSource(repository="https://example.com/octopus-inputs.git", start_point="v1")
-        manager = OctopusManager(tmp_path / "work", tmp_path / "archive", app, git_control)
+        with pytest.raises(TypeError, match="ExistingDirectoryControlSource, got GitControlSource"):
+            OctopusManager(tmp_path / "work", tmp_path / "archive", app, git_control)
 
-        def fake_git(args, **kwargs):
-            if args[1] == "clone":
-                write_experiment(Path(args[3]))
-            assert kwargs["env"]["GIT_TERMINAL_PROMPT"] == "0"
-            return subprocess.CompletedProcess(args, 0)
+    def test_missing_directory(self, tmp_path, app):
+        with pytest.raises(ValueError, match="does not exist"):
+            OctopusManager(
+                tmp_path / "work", tmp_path / "archive", app, ExistingDirectoryControlSource(tmp_path / "nowhere")
+            )
 
-        with mock.patch("octopus_profiling.manager.subprocess.run", side_effect=fake_git) as run:
-            generate(manager)
+    def test_setter(self, manager, tmp_path, control):
+        git_control = GitControlSource(repository="https://example.com/octopus-inputs.git", start_point="v1")
+        with pytest.raises(TypeError):
+            manager.control = git_control
+        with pytest.raises(ValueError):
+            manager.control = ExistingDirectoryControlSource(tmp_path / "nowhere")
+        assert manager.control is control
 
-        assert [call.args[0][:2] for call in run.call_args_list] == [["git", "clone"], ["git", "checkout"]]
-        assert run.call_args_list[1].args[0] == ["git", "checkout", "v1"]
-        assert len(manager.experiments) == 3
+        other = ExistingDirectoryControlSource(write_experiment(tmp_path / "other"))
+        manager.control = other
+        assert manager.control is other
+
+        manager.control = None
+        assert manager.control is None
 
 
 class TestRunExperiments:
