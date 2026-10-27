@@ -222,3 +222,7 @@ __marimo__/
 # Editors and tools used locally
 .vscode/
 .claude/
+
+# Outputs of the examples
+examples/experiments/
+examples/archive/

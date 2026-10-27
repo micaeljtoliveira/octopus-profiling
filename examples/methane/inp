@@ -1,0 +1,19 @@
+CalculationMode = gs
+UnitsOutput = eV_Angstrom
+
+Radius = 4.5*angstrom
+Spacing = 0.1*angstrom
+
+CH = 1.097*angstrom
+%Coordinates
+  "C" |           0 |          0 |           0
+  "H" |  CH/sqrt(3) | CH/sqrt(3) |  CH/sqrt(3)
+  "H" | -CH/sqrt(3) |-CH/sqrt(3) |  CH/sqrt(3)
+  "H" |  CH/sqrt(3) |-CH/sqrt(3) | -CH/sqrt(3)
+  "H" | -CH/sqrt(3) | CH/sqrt(3) | -CH/sqrt(3)
+%
+
+Eigensolver = chebyshev_filter
+ExtraStates = 4
+
+ExperimentalFeatures = yes
